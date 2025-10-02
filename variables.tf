@@ -11,7 +11,13 @@ variable "environment" {
 }
 
 variable "user_name" {
-  description = "User name to display"
+  description = "User name for tagging"
   type        = string
-  default     = "TerraformUser"
+  default     = "Admin"
+}
+
+variable "project_name" {
+  description = "Project name"
+  type        = string
+  default     = "logicapp-kv"
 }

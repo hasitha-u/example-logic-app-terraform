@@ -1,37 +1,142 @@
 {
-  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
   "contentVersion": "1.0.0.0",
   "parameters": {
-    "User": {
-      "type": "String",
-      "defaultValue": "DefaultUser"
+    "logic_app_name": {
+      "type": "string"
     },
-    "Env": {
-      "type": "String",
-      "defaultValue": "development"
+    "keyvault_name": {
+      "type": "string"
+    },
+    "secret_name": {
+      "type": "string"
+    },
+    "tenant_id": {
+      "type": "string"
+    },
+    "subscription_id": {
+      "type": "string"
+    },
+    "resource_group": {
+      "type": "string"
+    },
+    "managed_identity_id": {
+      "type": "string"
+    },
+    "managed_identity_client_id": {
+      "type": "string"
+    },
+    "location": {
+      "type": "string"
     }
   },
-  "triggers": {
-    "manual": {
-      "type": "Request",
-      "kind": "Http",
-      "inputs": {
-        "schema": {}
+  "variables": {},
+  "resources": [
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2019-05-01",
+      "name": "[parameters('logic_app_name')]",
+      "location": "[parameters('location')]",
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[parameters('managed_identity_id')]": {}
+        }
+      },
+      "properties": {
+        "state": "Enabled",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {},
+          "triggers": {
+            "manual": {
+              "type": "Request",
+              "kind": "Http",
+              "inputs": {
+                "method": "POST",
+                "schema": {}
+              }
+            }
+          },
+          "actions": {
+            "Get_Secret": {
+              "type": "Http",
+              "inputs": {
+                "method": "GET",
+                "uri": "[concat('https://', parameters('keyvault_name'), '.vault.azure.net/secrets/', parameters('secret_name'), '?api-version=7.4')]",
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "identity": "[parameters('managed_identity_id')]",
+                  "audience": "https://vault.azure.net"
+                }
+              },
+              "runAfter": {}
+            },
+            "Parse_Secret_Response": {
+              "type": "ParseJson",
+              "inputs": {
+                "content": "@body('Get_Secret')",
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "attributes": {
+                      "type": "object"
+                    }
+                  }
+                }
+              },
+              "runAfter": {
+                "Get_Secret": ["Succeeded"]
+              }
+            },
+            "Response": {
+              "type": "Response",
+              "kind": "Http",
+              "inputs": {
+                "statusCode": 200,
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "message": "Secret retrieved successfully",
+                  "secret_value": "@{body('Parse_Secret_Response')?['value']}",
+                  "keyvault": "@{parameters('keyvault_name')}",
+                  "secret_name": "@{parameters('secret_name')}",
+                  "timestamp": "@{utcNow()}"
+                }
+              },
+              "runAfter": {
+                "Parse_Secret_Response": ["Succeeded"]
+              }
+            },
+            "Response_Error": {
+              "type": "Response",
+              "kind": "Http",
+              "inputs": {
+                "statusCode": 500,
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "error": "Failed to retrieve secret",
+                  "details": "@{body('Get_Secret')}"
+                }
+              },
+              "runAfter": {
+                "Get_Secret": ["Failed"]
+              }
+            }
+          },
+          "outputs": {}
+        }
       }
     }
-  },
-  "actions": {
-    "Response": {
-      "type": "Response",
-      "inputs": {
-        "statusCode": 200,
-        "headers": {
-          "Content-Type": "text/plain"
-        },
-        "body": "Hello, @{parameters('User')}!\nEnv: @{parameters('Env')}\nTimestamp: @{utcNow('yyyy-MM-dd HH:mm:ss UTC')}"
-      },
-      "runAfter": {}
-    }
-  },
-  "outputs": {}
+  ]
 }
