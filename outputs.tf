@@ -1,4 +1,5 @@
 output "trigger_url" {
-  value     = data.azapi_resource_action.manual_callback.output.value
-  sensitive = true
+  description = "Trigger URL for the Logic App"
+  value       = azurerm_logic_app_workflow.main.access_endpoint
+  sensitive   = true
 }

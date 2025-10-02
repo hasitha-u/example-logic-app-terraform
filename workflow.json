@@ -55,23 +55,46 @@
               "kind": "Http",
               "inputs": {
                 "method": "POST",
-                "schema": {}
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "secretName": {
+                      "type": "string",
+                      "default": "example-secret"
+                    }
+                  }
+                }
               }
             }
           },
           "actions": {
+            "Initialize_Secret_Name": {
+              "type": "InitializeVariable",
+              "inputs": {
+                "variables": [
+                  {
+                    "name": "SecretName",
+                    "type": "string",
+                    "value": "@{coalesce(triggerBody()?['secretName'], 'example-secret')}"
+                  }
+                ]
+              },
+              "runAfter": {}
+            },
             "Get_Secret": {
               "type": "Http",
               "inputs": {
                 "method": "GET",
-                "uri": "[concat('https://', parameters('keyvault_name'), '.vault.azure.net/secrets/', parameters('secret_name'), '?api-version=7.4')]",
+                "uri": "[concat('https://', parameters('keyvault_name'), '.vault.azure.net/secrets/@{variables(''SecretName'')}?api-version=7.4')]",
                 "authentication": {
                   "type": "ManagedServiceIdentity",
                   "identity": "[parameters('managed_identity_id')]",
                   "audience": "https://vault.azure.net"
                 }
               },
-              "runAfter": {}
+              "runAfter": {
+                "Initialize_Secret_Name": ["Succeeded"]
+              }
             },
             "Parse_Secret_Response": {
               "type": "ParseJson",
@@ -87,7 +110,21 @@
                       "type": "string"
                     },
                     "attributes": {
-                      "type": "object"
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "created": {
+                          "type": "integer"
+                        },
+                        "updated": {
+                          "type": "integer"
+                        },
+                        "recoveryLevel": {
+                          "type": "string"
+                        }
+                      }
                     }
                   }
                 }
@@ -96,7 +133,7 @@
                 "Get_Secret": ["Succeeded"]
               }
             },
-            "Response": {
+            "Response_Success": {
               "type": "Response",
               "kind": "Http",
               "inputs": {
@@ -105,10 +142,20 @@
                   "Content-Type": "application/json"
                 },
                 "body": {
+                  "status": "success",
                   "message": "Secret retrieved successfully",
-                  "secret_value": "@{body('Parse_Secret_Response')?['value']}",
-                  "keyvault": "@{parameters('keyvault_name')}",
-                  "secret_name": "@{parameters('secret_name')}",
+                  "data": {
+                    "secret_value": "@{body('Parse_Secret_Response')?['value']}",
+                    "secret_id": "@{body('Parse_Secret_Response')?['id']}",
+                    "metadata": {
+                      "keyvault": "@{parameters('keyvault_name')}",
+                      "secret_name": "@{variables('SecretName')}",
+                      "enabled": "@{body('Parse_Secret_Response')?['attributes']?['enabled']}",
+                      "created": "@{body('Parse_Secret_Response')?['attributes']?['created']}",
+                      "updated": "@{body('Parse_Secret_Response')?['attributes']?['updated']}",
+                      "recovery_level": "@{body('Parse_Secret_Response')?['attributes']?['recoveryLevel']}"
+                    }
+                  },
                   "timestamp": "@{utcNow()}"
                 }
               },
@@ -125,8 +172,13 @@
                   "Content-Type": "application/json"
                 },
                 "body": {
-                  "error": "Failed to retrieve secret",
-                  "details": "@{body('Get_Secret')}"
+                  "status": "error",
+                  "message": "Failed to retrieve secret",
+                  "error": {
+                    "details": "@{body('Get_Secret')}",
+                    "secret_name": "@{variables('SecretName')}",
+                    "timestamp": "@{utcNow()}"
+                  }
                 }
               },
               "runAfter": {

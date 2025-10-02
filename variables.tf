@@ -21,3 +21,9 @@ variable "project_name" {
   type        = string
   default     = "logicapp-kv"
 }
+
+variable "enable_purge_protection" {
+  description = "Enable purge protection for Key Vault"
+  type        = bool
+  default     = false # Set to true in production
+}

@@ -10,6 +10,7 @@ resource "azurerm_resource_group" "main" {
     Environment = var.environment
     Owner       = var.user_name
     Project     = var.project_name
+    ManagedBy   = "Terraform"
   }
 }
 
@@ -22,6 +23,7 @@ resource "azurerm_user_assigned_identity" "logic_app" {
   tags = {
     Environment = var.environment
     Owner       = var.user_name
+    Purpose     = "Logic App Managed Identity"
   }
 }
 
@@ -43,7 +45,7 @@ resource "azurerm_logic_app_workflow" "main" {
     })
     "$secret_name" = jsonencode({
       type         = "String"
-      defaultValue = azurerm_key_vault_secret.example.name
+      defaultValue = "example-secret"
     })
     "$tenant_id" = jsonencode({
       type         = "String"
@@ -69,8 +71,8 @@ resource "azurerm_logic_app_workflow" "main" {
   }
 
   depends_on = [
-    azurerm_key_vault_access_policy.logic_app,
-    azurerm_key_vault_secret.example
+    azurerm_role_assignment.logic_app_kv_secrets_user,
+    azurerm_key_vault_secret.example_writeonly
   ]
 }
 
@@ -90,7 +92,7 @@ resource "azurerm_resource_group_template_deployment" "logic_app_workflow" {
       value = azurerm_key_vault.main.name
     }
     "secret_name" = {
-      value = azurerm_key_vault_secret.example.name
+      value = "example-secret"
     }
     "tenant_id" = {
       value = data.azurerm_client_config.current.tenant_id
@@ -114,6 +116,6 @@ resource "azurerm_resource_group_template_deployment" "logic_app_workflow" {
 
   depends_on = [
     azurerm_logic_app_workflow.main,
-    azurerm_key_vault_access_policy.logic_app
+    azurerm_role_assignment.logic_app_kv_secrets_user
   ]
 }
