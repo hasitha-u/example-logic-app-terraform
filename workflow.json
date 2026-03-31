@@ -2,13 +2,23 @@
   "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
   "contentVersion": "1.0.0.0",
   "parameters": {
-    "User": {
+    "username": {
       "type": "String",
       "defaultValue": "DefaultUser"
     },
-    "Env": {
+    "environment": {
       "type": "String",
       "defaultValue": "development"
+    },
+    "keyvault_uri": {
+      "type": "String"
+    },
+    "secret_name": {
+      "type": "String",
+      "defaultValue": "example-secret"
+    },
+    "managed_identity_id": {
+      "type": "String"
     }
   },
   "triggers": {
@@ -16,21 +26,76 @@
       "type": "Request",
       "kind": "Http",
       "inputs": {
+        "method": "POST",
         "schema": {}
       }
     }
   },
   "actions": {
+    "Get_Secret": {
+      "type": "Http",
+      "inputs": {
+        "method": "GET",
+        "uri": "@{parameters('keyvault_uri')}secrets/@{parameters('secret_name')}?api-version=7.4",
+        "authentication": {
+          "type": "ManagedServiceIdentity",
+          "identity": "@parameters('managed_identity_id')",
+          "audience": "https://vault.azure.net"
+        }
+      },
+      "runAfter": {}
+    },
+    "Parse_Secret": {
+      "type": "ParseJson",
+      "inputs": {
+        "content": "@body('Get_Secret')",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "runAfter": {
+        "Get_Secret": ["Succeeded"]
+      }
+    },
     "Response": {
       "type": "Response",
+      "kind": "Http",
       "inputs": {
         "statusCode": 200,
         "headers": {
-          "Content-Type": "text/plain"
+          "Content-Type": "application/json"
         },
-        "body": "Hello, @{parameters('User')}!\nEnv: @{parameters('Env')}\nTimestamp: @{utcNow('yyyy-MM-dd HH:mm:ss UTC')}"
+        "body": {
+          "username": "@{parameters('username')}",
+          "secret_value": "@{body('Parse_Secret')?['value']}",
+          "timestamp": "@{utcNow('yyyy-MM-dd HH:mm:ss')} UTC"
+        }
       },
-      "runAfter": {}
+      "runAfter": {
+        "Parse_Secret": ["Succeeded"]
+      }
+    },
+    "Response_Error": {
+      "type": "Response",
+      "kind": "Http",
+      "inputs": {
+        "statusCode": 500,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "error": "Failed to retrieve secret",
+          "timestamp": "@{utcNow('yyyy-MM-dd HH:mm:ss')} UTC"
+        }
+      },
+      "runAfter": {
+        "Get_Secret": ["Failed"]
+      }
     }
   },
   "outputs": {}
